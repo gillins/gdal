@@ -120,9 +120,10 @@ GDALDataset *KEADataset::Open(GDALOpenInfo *poOpenInfo)
         try
         {
             // try and open it in the appropriate mode
-            H5::H5File *pH5File;
+            HDF5Ptr pH5File;
             if (poOpenInfo->eAccess == GA_ReadOnly)
             {
+#if LIBKEA_VERSION_MAJOR < 2
                 // use the virtual driver so we can open files using
                 // /vsicurl etc
                 // do this same as libkea
@@ -141,6 +142,13 @@ GDALDataset *KEADataset::Open(GDALOpenInfo *poOpenInfo)
                 pH5File = new H5::H5File(keaImgFilePath, H5F_ACC_RDONLY,
                                          H5::FileCreatPropList::DEFAULT,
                                          keaAccessPlist);
+#else
+                // use the virtual driver so we can open files using
+                // /vsicurl etc
+                pH5File = kealib::KEAImageIO::openKeaH5RDOnly( poOpenInfo->pszFilename,
+                    kealib::KEA_MDC_NELMTS, kealib::KEA_RDCC_NELMTS, kealib::KEA_RDCC_NBYTES, kealib::KEA_RDCC_W0, 
+                    kealib::KEA_SIEVE_BUF, kealib::KEA_META_BLOCKSIZE, HDF5VFLGetFileDriver(), nullptr);
+#endif
             }
             else
             {
@@ -181,7 +189,7 @@ GDALDataset *KEADataset::Open(GDALOpenInfo *poOpenInfo)
 }
 
 // static function
-H5::H5File *KEADataset::CreateLL(const char *pszFilename, int nXSize,
+HDF5Ptr KEADataset::CreateLL(const char *pszFilename, int nXSize,
                                  int nYSize, int nBandsIn, GDALDataType eType,
                                  char **papszParamList)
 {
@@ -269,7 +277,7 @@ H5::H5File *KEADataset::CreateLL(const char *pszFilename, int nXSize,
     try
     {
         // now create it
-        H5::H5File *keaImgH5File = kealib::KEAImageIO::createKEAImage(
+        HDF5Ptr keaImgH5File = kealib::KEAImageIO::createKEAImage(
             pszFilename, keaDataType, nXSize, nYSize, nBandsIn, nullptr,
             nullptr, nimageblockSize, nattblockSize, nmdcElmts, nrdccNElmts,
             nrdccNBytes, nrdccW0, nsieveBuf, nmetaBlockSize, ndeflate);
@@ -296,7 +304,7 @@ GDALDataset *KEADataset::Create(const char *pszFilename, int nXSize, int nYSize,
                                 int nBandsIn, GDALDataType eType,
                                 char **papszParamList)
 {
-    H5::H5File *keaImgH5File =
+    HDF5Ptr keaImgH5File =
         CreateLL(pszFilename, nXSize, nYSize, nBandsIn, eType, papszParamList);
     if (keaImgH5File == nullptr)
         return nullptr;
@@ -346,7 +354,7 @@ GDALDataset *KEADataset::CreateCopy(const char *pszFilename,
     GDALDataType eType = (nBands == 0)
                              ? GDT_Unknown
                              : pSrcDs->GetRasterBand(1)->GetRasterDataType();
-    H5::H5File *keaImgH5File =
+    HDF5Ptr keaImgH5File =
         CreateLL(pszFilename, nXSize, nYSize, nBands, eType, papszParamList);
     if (keaImgH5File == nullptr)
         return nullptr;
@@ -436,7 +444,7 @@ GDALDataset *KEADataset::CreateCopy(const char *pszFilename,
 }
 
 // constructor
-KEADataset::KEADataset(H5::H5File *keaImgH5File, GDALAccess eAccessIn)
+KEADataset::KEADataset(HDF5Ptr keaImgH5File, GDALAccess eAccessIn)
 {
     this->m_hMutex = CPLCreateMutex();
     CPLReleaseMutex(this->m_hMutex);
